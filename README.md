@@ -16,11 +16,23 @@
 
 ## 使用
 
-将本仓库的 `SKILL.md` 放入宿主支持的 `compose-agent/` skill 目录，并按宿主的方式加载。Paseo 的操作参考由独立的 `paseo` skill 提供，本仓库不包含它。
+将本仓库的 `SKILL.md` 和 `scripts/` 一起放入宿主支持的 `compose-agent/` skill 目录，并按宿主的方式加载。Paseo 的操作参考由独立的 `paseo` skill 提供，本仓库不包含它。
 
 例如：
 
 > 在可用的 runtime 上安排一个 agent 处理这个任务，先确认模型、项目和 worktree。
+
+## 等待与接力
+
+原 `watch-paseo` 已并入本 skill，无需另外安装。使用 Paseo 原生等待，不自写轮询：
+
+```bash
+bash /path/to/compose-agent/scripts/watch-paseo.sh AGENT_ID
+```
+
+第二个参数可传远端 `HOST`（例如 `ssh://user@host`）。依赖 Bash 和支持 `wait` 的 Paseo CLI，默认无限等待，错误原样返回。Alma 中后台执行且不设总 timeout，完成事件恢复会话后，读日志、核对产物、独立验证，再按原授权接力；**idle 不代表验收通过**。
+
+测试：`PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests`。测试覆盖参数、远端参数透传、阻塞等待、错误退出和非法参数，不需要真实 daemon。
 
 ## Cursor 权限默认值
 

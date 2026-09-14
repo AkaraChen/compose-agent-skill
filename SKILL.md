@@ -1,6 +1,6 @@
 ---
 name: compose-agent
-description: Use before launching or delegating an agent when the runtime machine, provider/model, project, or workspace needs to be resolved. Also applies when the user asks where or how an agent should run, or asks to watch an existing Paseo agent until idle and then take over review or follow-up work.
+description: Use before launching or delegating an agent when the runtime machine, provider/model, project, or workspace needs to be resolved. Also applies when the user asks where or how an agent should run, when driving the Cursor CLI headlessly with --print, or asks to watch an existing Paseo agent until idle and then take over review or follow-up work.
 ---
 
 # Compose Agent
@@ -18,6 +18,8 @@ Resolve where and how an agent will run, then resume review or follow-up after i
 
 ## Wait and take over (Paseo)
 
+This applies to agents that a daemon owns. A Cursor run started through headless `--print` is already synchronous and needs none of it — see the Cursor section below.
+
 Prefer native completion notifications when already enabled. When asked to watch an existing agent, use the bundled script with its full ID and the previously resolved runtime. Requires Bash and a Paseo CLI with native `wait` support:
 
 ```bash
@@ -31,12 +33,33 @@ Replace `<skill-dir>` with this skill's absolute directory. Omit `HOST` for the 
 - **Review before continuing.** Idle means the turn stopped, not that the task passed. Read the target's latest logs and task artifacts, identify failures or pending permissions, and independently run the required verification. Detached tests may still be running; check that specific test run separately.
 - **Respect the original stopping rule.** Continue or return defects to the same agent only within existing authorization. At a human checkpoint or a new decision, report evidence and wait. Never expose credentials from raw logs.
 
+## Cursor: headless `--print` (default)
+
+Drive Cursor through headless print mode (`cursor-agent -p`) whenever the host can run a blocking command — locally, over SSH, or from a scheduling agent. One invocation is one turn, and the command returns when that turn ends. **The wait is built in:** there is nothing to poll, no Paseo `wait`, and no watcher.
+
+```bash
+bash <skill-dir>/scripts/cursor-headless.sh PROMPT [SESSION_ID]
+```
+
+The script runs one turn, forces the pre-authorized full-permission mode, prints the JSON result object, and propagates the exit code. Pass the previous turn's `session_id` as `SESSION_ID` to continue the conversation. It adds no polling, retries, or permission handling.
+
+- **One turn per call, multiple steps inside it.** Within a single call the agent runs its full tool loop — reads, writes, shell commands — before returning. Multi-turn means separate calls, not one long prompt.
+- **Full permissions are a launch flag here.** `-f`/`--force` (alias `--yolo`) is the documented headless equivalent of the ACP `/run-everything` step below, and it also satisfies workspace trust. An untrusted directory in print mode exits 1 immediately instead of prompting, so a headless call that must write needs one of `--force`, `--yolo`, or `--trust`.
+- **Read the JSON, not the console.** `--output-format json` returns one object: `type`, `subtype`, `is_error`, `duration_ms`, `result`, `session_id`, `request_id`, `usage`. Take the answer from `.result` and the next turn's handle from `.session_id`. Default `text` prints only the final answer; `stream-json` with `--stream-partial-output` is for live progress. Always pass an explicit session id when resuming — bare `--resume` opens a session picker, and `create-chat` mints an id up front.
+- **Exit code is the verdict.** Zero on success, nonzero on failure; never infer success from partial output. A retrying connection re-emits the turn's text into `.result`, so the string can repeat — read it as the answer, not as a guaranteed single copy.
+- **Do not treat print mode as a sandbox by omission.** Write approval also follows the CLI's own approval mode and local configuration, which can auto-approve writes even without `--force`. To restrict a run, set the mode explicitly rather than relying on an absent flag.
+- **Attach long turns to the host.** A single turn can run for minutes. In Alma, start the script with Bash `run_in_background: true` and no `timeout`, keep the `bash_id`, and use blocking BashOutput reads — a read deadline is not process completion. The built-in wait means no separate watcher is needed, not that the call is instantly short.
+
+Verified against cursor-agent 2026.09.10 on macOS: a single `-p --force --output-format json` call created a file, read it back, and ran a shell command before exiting 0; `--resume <session_id>` recalled the previous turn; an untrusted directory exited 1 without `--force`/`--trust`.
+
 ## Exception: cursor-agent over ACP
+
+Use this only when the target is a session-managed agent rather than a command you can run — for example an agent that a Paseo daemon owns. Prefer the headless section above when the host can execute a command directly.
 
 **Enable `/run-everything` by default when starting cursor-agent over ACP.** The user has pre-authorized this native permission mode; do not ask for separate approval. This standing instruction applies to Cursor, not other providers, and does not authorize launching agents for draft-only requests.
 
 - **Session setup:** send `/run-everything` inside the target Cursor session before handing over the task, unless the user explicitly requests restricted permissions. This is a Cursor-specific slash command, not a generic ACP setting or a Paseo launch parameter to guess. Check the session response rather than assuming it took effect.
 - **When apparently stuck:** check pending permissions before blaming model reasoning. An agent can show `running` while waiting for approval; report the actual pending requests, not a diagnosis based only on elapsed time or zero writes.
-- **No workaround:** if the native command fails or cannot be delivered through the supported interface, stop and report. Do not add approval loops, modify Paseo configuration, or substitute repeated one-shot approvals.
+- **No workaround:** if the native command fails or cannot be delivered through the supported interface, stop and report. Do not add approval loops, modify Paseo configuration, or substitute repeated one-shot approvals. Choosing headless print mode up front is a mode decision, not a fallback: do not switch to it to get around a permission or capability failure in a session that is already running.
 
 Treat this as a setup-specific operational lesson. Recheck current documented capabilities when versions change; a missing string in an application bundle does not prove a capability is impossible.

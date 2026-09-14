@@ -44,13 +44,35 @@ bash /path/to/compose-agent/scripts/watch-paseo.sh AGENT_ID
 bash /path/to/compose-agent/scripts/cursor-headless.sh PROMPT [SESSION_ID]
 ```
 
-脚本跑一轮、带上预授权的全权限标志、把 JSON 结果打到 stdout，并原样传递退出码；第二个参数传上一轮的 `session_id` 即续接同一会话。不轮询、不重试、不处理权限。
+脚本固定跑 `-p --force --output-format json`，把 JSON 结果打到 stdout，并原样传递退出码；第二个参数传上一轮的 `session_id` 即续接同一会话。不轮询、不重试、不处理权限，**它也不是通用参数包装器**：要换模型、换 workspace、开 worktree 或用受限模式，直接按下面的表调 `cursor-agent`。
 
 - **一次调用一轮，轮内多步。** 单次调用里 agent 会跑完整个工具循环（读、写、跑 shell）再返回；多轮 = 多次调用。
 - **等待是自带的。** `cursor-agent -p` 同步阻塞到该轮结束，不需要也不该再套 Paseo `wait`、watcher 或状态轮询。
 - **读 JSON 而不是控制台。** `--output-format json` 返回一个对象，取 `.result` 作为答案、`.session_id` 作为下一轮的句柄；`text`（默认）只打最终答案，`stream-json` + `--stream-partial-output` 用于实时进度。
 - **退出码即结论。** 0 成功、非 0 失败；不要用部分输出判断成功。无头模式下工作区未受信任会立刻退出 1，因此需要写入的调用要显式带上 `--force`/`--yolo` 或 `--trust`。
 - **不要把「没带 `--force`」当成沙箱。** 写入是否放行也受 CLI 自身审批模式与本地配置影响，可能照样自动批准。
+
+### 决定这次 run 的参数
+
+完整清单见 `cursor-agent --help` 和[参数文档](https://cursor.com/docs/cli/reference/parameters)；下面是决定四项选择的那批（按 2026.09.10 核对）：
+
+| 要什么 | 参数 |
+| --- | --- |
+| 一轮非交互执行 | `-p` / `--print` |
+| 结果形态 | `--output-format text\|json\|stream-json`，配 `--stream-partial-output` |
+| 免批准全权限 | `-f` / `--force` / `--yolo` —— **与 `--auto-review` 互斥**，同时给会 exit 1：`Run Everything and Auto-review are different autorun modes; pick one.` |
+| 分类器把关的权限 | `--auto-review`（安全调用自动跑，其余仍问） |
+| 信任工作区 | `--trust`（`--force` 已隐含） |
+| 文件系统/网络限制 | `--sandbox enabled\|disabled` |
+| MCP 免询问 | `--approve-mcps` |
+| 模型 | `--model <id>`；用 `--list-models` 或 `cursor-agent models` 枚举 |
+| 只读一轮 | `--mode plan` / `--mode ask` / `--plan` |
+| 在哪跑 | `--workspace <path-or-name>` / `--add-dir <path>` / `--plugin-dir <path>` |
+| 隔离 git worktree | `-w [name]` / `--worktree-base <branch>` / `--skip-worktree-setup`（建在 `~/.cursor/worktrees/<repo>/<name>`） |
+| 轮次续接 | `--resume <chatId>` / `--continue` / `create-chat`，列出用 `cursor-agent ls` |
+| 认证与端点透传 | `--api-key`（或 `CURSOR_API_KEY`）/ `-H/--header` / `-e/--endpoint` |
+
+⚠️ **别把 `--sandbox enabled` 当隔离边界**：实测和 `--force` 一起用，`curl` 到公网返回 200、往工作区外 `touch` 也成功。要用它当限制，先在目标机器上验。
 
 以上行为在 macOS 上用 cursor-agent 2026.09.10 实测：单次 `-p --force --output-format json` 调用在建文件、读回、跑 shell 后才退出 0；`--resume <session_id>` 能回忆上一轮内容；未受信任目录在不带 `--force`/`--trust` 时立刻退出 1。
 

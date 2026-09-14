@@ -51,7 +51,7 @@ Drive Cursor through headless print mode (`cursor-agent -p`) whenever the host c
 bash <skill-dir>/scripts/cursor-headless.sh PROMPT [SESSION_ID]
 ```
 
-The script runs one turn, forces the pre-authorized full-permission mode, prints the JSON result object, and propagates the exit code. Pass the previous turn's `session_id` as `SESSION_ID` to continue the conversation. It adds no polling, retries, or permission handling.
+The script runs one turn as `-p --force --output-format json`, prints the JSON result object, and propagates the exit code. Pass the previous turn's `session_id` as `SESSION_ID` to continue the conversation. It adds no polling, retries, or permission handling, and it is not a general flag wrapper: for a different model, workspace, worktree, or a restricted mode, call `cursor-agent` directly with the flags in the table below.
 
 - **One turn per call, multiple steps inside it.** Within a single call the agent runs its full tool loop — reads, writes, shell commands — before returning. Multi-turn means separate calls, not one long prompt.
 - **Full permissions are a launch flag here.** `-f`/`--force` (alias `--yolo`) is the documented headless equivalent of the ACP `/run-everything` step below, and it also satisfies workspace trust. An untrusted directory in print mode exits 1 immediately instead of prompting, so a headless call that must write needs one of `--force`, `--yolo`, or `--trust`.
@@ -59,6 +59,26 @@ The script runs one turn, forces the pre-authorized full-permission mode, prints
 - **Exit code is the verdict.** Zero on success, nonzero on failure; never infer success from partial output. A retrying connection re-emits the turn's text into `.result`, so the string can repeat — read it as the answer, not as a guaranteed single copy.
 - **Do not treat print mode as a sandbox by omission.** Write approval also follows the CLI's own approval mode and local configuration, which can auto-approve writes even without `--force`. To restrict a run, set the mode explicitly rather than relying on an absent flag.
 - **Attach long turns to the host.** A single turn can run for minutes. In Alma, start the script with Bash `run_in_background: true` and no `timeout`, keep the `bash_id`, and use blocking BashOutput reads — a read deadline is not process completion. The built-in wait means no separate watcher is needed, not that the call is instantly short.
+
+Flags that decide the run. The full list is `cursor-agent --help` and the [parameter reference](https://cursor.com/docs/cli/reference/parameters); these are the ones that settle one of the four choices (verified against 2026.09.10):
+
+| Need | Flag |
+| --- | --- |
+| One non-interactive turn | `-p` / `--print` |
+| Result shape | `--output-format text\|json\|stream-json`, plus `--stream-partial-output` |
+| Unrestricted permissions | `-f` / `--force` / `--yolo` — **mutually exclusive with `--auto-review`**: combining them exits 1 with `Run Everything and Auto-review are different autorun modes; pick one.` |
+| Classifier-gated permissions | `--auto-review` (safe calls run, the rest still prompt) |
+| Trust the workspace | `--trust` (`--force` implies it) |
+| Filesystem/network confinement | `--sandbox enabled\|disabled` |
+| MCP servers without prompting | `--approve-mcps` |
+| Model | `--model <id>`; enumerate with `--list-models` or `cursor-agent models` |
+| Read-only turn | `--mode plan`, `--mode ask`, `--plan` |
+| Where it runs | `--workspace <path-or-name>`, `--add-dir <path>`, `--plugin-dir <path>` |
+| Isolated git worktree | `-w [name]`, `--worktree-base <branch>`, `--skip-worktree-setup` (created under `~/.cursor/worktrees/<repo>/<name>`) |
+| Turn continuity | `--resume <chatId>`, `--continue`, `create-chat`, list with `cursor-agent ls` |
+| Auth and endpoint passthrough | `--api-key` (or `CURSOR_API_KEY`), `-H/--header`, `-e/--endpoint` |
+
+Do not treat `--sandbox enabled` as a confinement boundary on its own: measured alongside `--force`, a `curl` to the internet returned 200 and a `touch` outside the workspace succeeded. Verify on the target before relying on it.
 
 Verified against cursor-agent 2026.09.10 on macOS: a single `-p --force --output-format json` call created a file, read it back, and ran a shell command before exiting 0; `--resume <session_id>` recalled the previous turn; an untrusted directory exited 1 without `--force`/`--trust`.
 

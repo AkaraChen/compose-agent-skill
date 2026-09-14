@@ -1,6 +1,6 @@
 ---
 name: compose-agent
-description: Use before launching or delegating an agent when the runtime machine, provider/model, project, or workspace needs to be resolved. Also applies when the user asks where or how an agent should run, when driving the Cursor CLI headlessly with --print, or asks to watch an existing Paseo agent until idle and then take over review or follow-up work.
+description: Use before launching or delegating an agent when the runtime machine, provider/model, project, workspace, or permission mode needs to be resolved. Also applies when the user asks where or how an agent should run, when choosing how permissive a run should be, when driving the Cursor CLI headlessly with --print, or asks to watch an existing Paseo agent until idle and then take over review or follow-up work.
 ---
 
 # Compose Agent
@@ -14,7 +14,17 @@ Resolve where and how an agent will run, then resume review or follow-up after i
 3. **Keep availability scoped.** Verify results belong to the target runtime. A model, project, path, or workspace on one machine says nothing about another. Use current provider-scoped model IDs, not remembered names. Distinguish verified, unavailable, and unknown.
 4. **Resolve four choices.** Establish the runtime, provider/model (or configured profile), project/path, and workspace/worktree. Preserve explicit user choices. If any remain unclear, ask with verified candidates; a recommendation is not authorization. Do not silently default to the current machine or directory.
 5. **Protect existing work.** Check the selected repository's branch/base and working state. Do not overwrite changes or assume a remote-tracking branch is fresh. Recommend isolation for independent work; clarify reuse versus a new worktree and its base when unspecified.
-6. **Stop at problems and permission boundaries.** If Paseo fails, lacks a capability, or blocks on permission after the native setup below, report it and ask the user. Do not build wrappers, substitute another route, change configuration, or add approval loops to achieve the blocked outcome.
+6. **Stop at problems and permission boundaries.** If Paseo fails, lacks a capability, or blocks on permission after the native setup below, report it and ask the user. Do not build wrappers, substitute another route, change configuration, or add approval loops to achieve the blocked outcome. Permission is settled when the run is composed (see the posture section below), not worked around while it runs.
+
+## Permission posture: unrestricted by default
+
+Automation outranks approval friction here. When composing a run, choose the target's unrestricted permission mode **at launch**, so the agent never stops on a prompt that nobody is watching. Decide the posture while composing; do not start a run on a prompt-by-prompt mode and hope someone is around to approve.
+
+- **Read the mode off the target.** `paseo agent mode <id> --list --json` prints the ids and labels an existing agent accepts; `paseo provider ls --json` shows a provider's `defaultMode` and mode labels. Pass the unrestricted id as `--mode <id>` when launching. Verified ids: codex `full-access` ("Full Access"; the other two are `auto`, `auto-review`), claude `bypassPermissions`. Labels seen without a confirmed id: amp-acp "Bypass", kimi "YOLO". No unrestricted entry at all: **cursor** (`agent`/`plan`/`ask` only), grok, opencode (`Build`/`Plan`). A label is not an id — resolve it against the target, do not guess.
+- **Cursor needs its own mechanism.** Headless: `-f`/`--force` (the bundled script already passes it). Over ACP: send `/run-everything` in the session before handing over the task. Cursor has no paseo mode for this, so do not go looking for one.
+- **Adjusting a live run is a native command, not a script.** `paseo agent mode <id> <mode>` changes an agent's mode. Prefer getting it right at launch, use that command to correct one, and do not build a polling approval loop. If a run is already parked on pending approvals and the mode change does not clear them, report the pending requests instead of inventing machinery.
+- **A named mode is the mechanism; a workaround is not.** No polling approval loops, no edits to the scheduler's configuration, no injecting commands into a live session. If the target offers no unrestricted mode, say so in the handoff rather than approximating one.
+- **Hand off with the posture stated.** An unrestricted run can write files, install packages, and reach the network without asking. Say so once, when handing off, so the choice is visible rather than silent.
 
 ## Wait and take over (Paseo)
 

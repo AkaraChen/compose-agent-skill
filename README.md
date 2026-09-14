@@ -10,6 +10,7 @@
 - 只读发现 runtime、模型、项目和 workspace/worktree，按机器核实可用性。
 - 明确四项执行选择，保护已有代码与工作区。
 - Paseo 出问题时停下报告，不自行实现替代方案。
+- **默认按最宽松的权限模式启动**：自动化优先于审批摩擦，编排时就把免批准的那档选好，别让 agent 停在没人看的批准框上。
 - Cursor 默认走 headless `--print`：一次调用一轮，命令自己阻塞到结束，多步工具循环在同一轮内完成，多轮靠 `--resume <session_id>`。
 - 仅当目标是 daemon 托管的会话时才走 Cursor ACP，那时仍按 `/run-everything` 初始化权限并做排障。
 
@@ -53,11 +54,26 @@ bash /path/to/compose-agent/scripts/cursor-headless.sh PROMPT [SESSION_ID]
 
 以上行为在 macOS 上用 cursor-agent 2026.09.10 实测：单次 `-p --force --output-format json` 调用在建文件、读回、跑 shell 后才退出 0；`--resume <session_id>` 能回忆上一轮内容；未受信任目录在不带 `--force`/`--trust` 时立刻退出 1。
 
-## Cursor 权限默认值
+## 权限姿态：默认放开
 
-**headless 模式下默认带 `-f/--force`（`--yolo` 同义），这是 ACP 那条 `/run-everything` 在无头场景的对应物。** 在 ACP 会话里则默认要求在启动后发送 `/run-everything`，不再逐次询问。两者都是本项目明确采用的全权限执行策略，并非各协议的通用默认值。采用本 skill 前请审阅这一规则；如果需要限制权限，应明确覆盖它。
+**本项目自动化优先于审批摩擦。** 编排一个 run 的时候就把免批准的那档权限选好，不要用逐次询问的模式起步、指望有人在旁边点批准。
 
-该设置仅适用于 Cursor，不授权额外启动任务，也不允许在原生命令失败时通过批准循环、切换执行方式或修改 Paseo 配置绕过问题。
+**先读目标的 mode，不要背。** `paseo agent mode <id> --list --json` 给出某个 agent 实际接受的 id 与标签；`paseo provider ls --json` 给出 provider 的 `defaultMode` 与 mode 标签。启动时把最宽松那个 id 传给 `--mode`。
+
+| 目标 | 免批准那档 | 依据 |
+| --- | --- | --- |
+| codex（paseo） | `--mode full-access`（另两档 `auto` / `auto-review`） | id 实测（`agent mode --list`），paseo 自带示例也是 `--mode full-access` |
+| claude | `bypassPermissions` | 取自 paseo 的 CLI 帮助文本 |
+| amp-acp | 标签 "Bypass" | 只有标签，id 未实测 |
+| kimi | 标签 "YOLO" | 只有标签，id 未实测 |
+| **cursor** | paseo 里**没有**（只有 `agent` / `plan` / `ask`） | 走它自己的机制，见下 |
+| grok / opencode | 没有（opencode 只有 `Build` / `Plan`） | 实测 |
+
+**Cursor 得用它的原生机制**：headless 带 `-f/--force`（`--yolo` 同义，本仓库脚本已经默认带上），ACP 会话里则默认要求在启动后发送 `/run-everything`。Cursor 在 paseo 里没有对应 mode，别去硬找。
+
+**改一个跑着的 run，用原生命令。** `paseo agent mode <id> <mode>` 就是干这个的。最好在启动时就选对；要临时纠正就用这条命令；**不要写轮询批准循环**。如果 run 已经卡在待批的权限请求上、而改 mode 并没有清掉它们，就把待批清单报出来，而不是另造一套机制。
+
+**边界**：这是「启动时选一档」的机制，不是「运行时绕过一个已经卡住的批准」。禁止轮询批准循环、禁止改 paseo 配置、禁止往活着的会话里塞命令；目标本身没有免批准档时，如实写在交接里，不要自己造一档。免批准 run 能直接写文件、装包、连网 —— 交接时说一句，让这个选择是可见的而不是默认发生的。
 
 ## License
 

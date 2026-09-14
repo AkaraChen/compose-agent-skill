@@ -78,8 +78,6 @@ Flags that decide the run. The full list is `cursor-agent --help` and the [param
 | Turn continuity | `--resume <chatId>`, `--continue`, `create-chat`, list with `cursor-agent ls` |
 | Auth and endpoint passthrough | `--api-key` (or `CURSOR_API_KEY`), `-H/--header`, `-e/--endpoint` |
 
-Do not treat `--sandbox enabled` as a confinement boundary on its own: measured alongside `--force`, a `curl` to the internet returned 200 and a `touch` outside the workspace succeeded. Verify on the target before relying on it.
-
 Verified against cursor-agent 2026.09.10 on macOS: a single `-p --force --output-format json` call created a file, read it back, and ran a shell command before exiting 0; `--resume <session_id>` recalled the previous turn; an untrusted directory exited 1 without `--force`/`--trust`.
 
 ## Exception: cursor-agent over ACP

@@ -16,6 +16,19 @@
 
 完整内容见 [SKILL.md](SKILL.md)。
 
+## 仓库结构
+
+本仓库按「一个目录一个 skill」放：
+
+- **根目录 = `compose-agent`**：SKILL.md + `scripts/`，按下面「使用」一节装进宿主的 `compose-agent/` 目录。
+- **`agent-loop/` = `agent-loop`**：planner → executor → review 的循环本体，含 `references/loop-pattern.md`（无人值守驱动）和 `references/prompt-shapes.md`（各角色的 prompt 形状）。它只管循环本身，放置与权限仍归 `compose-agent`。
+
+## `agent-loop`：一次一个任务走完三个角色
+
+planner 只写 issue（只读轮），executor 只实现一个 sub-issue（增量提交、不 push），reviewer 只出裁决（accept / request_changes / reject）。适合「拆成 issue → 逐个实现 → 逐个验收」的活儿，尤其是你全权委托、不再盯着的场景。
+
+循环的停条件、状态文件、崩溃兜底、轮次上限，以及那个最容易在无人值守时挂掉的「accept → 写下一个 sub-issue」接缝，都写在 [agent-loop/SKILL.md](agent-loop/SKILL.md) 里。
+
 ## 使用
 
 将本仓库的 `SKILL.md` 和 `scripts/` 一起放入宿主支持的 `compose-agent/` skill 目录，并按宿主的方式加载。Paseo 的操作参考由独立的 `paseo` skill 提供，本仓库不包含它。
